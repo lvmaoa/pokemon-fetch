@@ -1,19 +1,22 @@
+#define _GNU_SOURCE
+
 #include <ncurses.h>
 #include <string.h>
 #include <form.h>
 #include <pthread.h>
 #include <curl/curl.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <time.h>
 #include "../include/events.h"
 #include "../include/helper.h"
 
 #define CHOICES_MAX 3
-#define CHUNK_SIZE 2048
+#define CHUNK_SIZE 281600
 
 typedef struct
 {
-    const char *name;
+    char *name;
     char url[128];
     int hp, atk, def, spA, spD, spe, bst;
 } pokemon_t;
@@ -30,25 +33,28 @@ bool run = true;
 struct queue q;
 pthread_mutex_t kPokemonMutex;
 pokemon_t kPokemon = {.name = "\0"};
+int fd[2];
 
 void parseJSON(char *inBuf)
 {
     char name[] = "base_stat";
-    char *temp1;
-    temp1 = strstr(inBuf, name);
+    inBuf = strstr(inBuf, name);
     if (pthread_mutex_trylock(&kPokemonMutex) == 0)
     {
-        kPokemon.hp = parseFirstNum(temp1);
-        temp1 += 97;
-        kPokemon.atk = parseFirstNum(temp1);
-        temp1 += 97;
-        kPokemon.def = parseFirstNum(temp1);
-        temp1 += 97;
-        kPokemon.spA = parseFirstNum(temp1);
-        temp1 += 97;
-        kPokemon.spD = parseFirstNum(temp1);
-        temp1 += 97;
-        kPokemon.spe = parseFirstNum(temp1);
+        // TODO: fix kPokemon.name is being malformed 
+        // workaround
+        inBuf = strstr(inBuf, name);
+        kPokemon.hp = parseFirstNum(inBuf);
+        inBuf = strstr(inBuf + 90, name);
+        kPokemon.atk = parseFirstNum(inBuf);
+        inBuf = strstr(inBuf + 90, name);
+        kPokemon.def = parseFirstNum(inBuf);
+        inBuf = strstr(inBuf + 90, name);
+        kPokemon.spA = parseFirstNum(inBuf);
+        inBuf = strstr(inBuf + 90, name);
+        kPokemon.spD = parseFirstNum(inBuf);
+        inBuf = strstr(inBuf + 90, name);
+        kPokemon.spe = parseFirstNum(inBuf);
         kPokemon.bst = kPokemon.hp + kPokemon.atk + kPokemon.def + kPokemon.spA + kPokemon.spD + kPokemon.spe;
     }
     else
@@ -194,6 +200,17 @@ void getRandomName()
     pthread_mutex_unlock(&kPokemonMutex);
 }
 
+void *getMod()
+{
+    keypad(stdscr, true);
+    while (run)
+    {
+        int mod = wgetch(stdscr);
+        write(fd[1], &mod, sizeof mod);
+    }
+    return NULL;
+}
+
 void *eventQueue()
 {
     while (run)
@@ -209,8 +226,16 @@ void *eventQueue()
 int main()
 {
     // Create threads
-    pthread_t thread1;
+    pthread_t thread1, thread2;
     pthread_create(&thread1, NULL, eventQueue, NULL);
+    pthread_create(&thread2, NULL, getMod, NULL);
+
+    int results = pipe(fd);
+    if (results > 0)
+    {
+        perror("pipe");
+        exit(1);
+    }
 
     // Start ncurses
     initscr();
@@ -227,6 +252,7 @@ int main()
 
     char *choice[CHOICES_MAX] = {"Search", "Random", "Quit"};
     int ch;
+    int mod;
     int hl = 0;
 
     while (run)
@@ -238,7 +264,7 @@ int main()
         {
             if (i == hl)
                 wattron(win, A_REVERSE);
-            mvwprintw(win, i+1, 1, "%s", choice[i]);
+            mvwprintw(win, i + 1, 1, "%s", choice[i]);
             wattroff(win, A_REVERSE);
         }
         WINDOW *pokewin = newwin(yMax - 10, xMax - 10, 2, 5);
@@ -249,6 +275,16 @@ int main()
         wrefresh(pokewin);
 
         ch = wgetch(win);
+
+        if (ch == 113)
+        {
+            read(fd[0], &mod, sizeof mod);
+            if (mod == 64)
+            {
+                // control was pressed
+                
+            }
+        }
 
         switch (ch)
         {
@@ -284,6 +320,7 @@ int main()
             }
         }
     }
+
     endwin();
 
     pthread_join(thread1, NULL);

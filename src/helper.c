@@ -2,7 +2,7 @@
 #include <ctype.h>
 #include <math.h>
 
-const char *trimWhitespace(char *inStr)
+char *trimWhitespace(char *inStr)
 {
     char *end;
     while(isspace(*inStr))
