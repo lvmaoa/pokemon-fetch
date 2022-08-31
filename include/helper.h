@@ -4,7 +4,7 @@
 #include <string.h>
 #include <ctype.h>
 
-const char *trimWhitespace(char *inStr);
+char *trimWhitespace(char *inStr);
 
 int parseFirstNum(char *inStr);
 
